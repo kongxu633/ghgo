@@ -2,9 +2,6 @@ name: "Release a tag"
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
-      - release/*
     tags:
       - "v*"
 
