@@ -1,0 +1,6 @@
+vendor/
+dist/
+
+# Develop tools
+.idea/
+.vscode/
