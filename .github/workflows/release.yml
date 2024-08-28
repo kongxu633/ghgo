@@ -1,7 +1,10 @@
 name: "Release a tag"
 on:
+  workflow_dispatch:
   push:
-    branches:  [ 'master' ]
+    branches:
+      - main
+      - release/*
 
 jobs:
   release:
