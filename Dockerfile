@@ -10,7 +10,7 @@ COPY go.sum .
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOARCH=64 GOOS=linux go build -a -o ghgo .
+RUN CGO_ENABLED=0 go build -a --trimpath --installsuffix cgo --ldflags="-s" -o gogh
 
 # Production stage
 FROM alpine:3.10 AS final
