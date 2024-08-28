@@ -13,7 +13,7 @@ import (
 
 const (
 	sizeLimit = 1024 * 1024 * 256 * 1
-	host      = "127.0.0.1"
+	host      = "0.0.0.0"
 	port      = 8888
 )
 
@@ -28,7 +28,7 @@ var (
 )
 
 func main() {
-	gin.SetMode(gin.ReleaseMode)
+	gin.SetMode(gin.DebugMode)
 	router := gin.Default()
 
 	router.GET("/", func(c *gin.Context) {
