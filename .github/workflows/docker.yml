@@ -32,5 +32,5 @@ jobs:
           push: true
           platforms: linux/amd64,linux/arm64
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ GITHUB_REPOSITORY_NAME_PART }}:${{ github.ref_name }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/${{ GITHUB_REPOSITORY_NAME_PART }}:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/ghgo:${{ github.ref_name }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/ghgo:latest
