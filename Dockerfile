@@ -1,19 +1,22 @@
 # Building stage
-FROM golang:1.13.5-alpine3.10 AS builder
+FROM golang:1.21-alpine3.20 AS builder
 
 WORKDIR /build
 RUN adduser -u 10001 -D app-runner
 
 #ENV GOPROXY https://goproxy.cn
-COPY go.mod .
-COPY go.sum .
+COPY go.mod go.sum ./
 RUN go mod download
 
-COPY . .
-RUN CGO_ENABLED=0 GOARCH=64 GOOS=linux go build -a -o ghgo .
+# Copy the source code. Note the slash at the end, as explained in
+# https://docs.docker.com/reference/dockerfile/#copy
+COPY *.go ./
+
+# Build
+RUN CGO_ENABLED=0 GOOS=linux go build -o ghgo
 
 # Production stage
-FROM alpine:3.10 AS final
+FROM alpine:3.20 AS final
 
 WORKDIR /app
 COPY --from=builder /build/ghgo /app/
