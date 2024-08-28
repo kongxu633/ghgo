@@ -1,0 +1,9 @@
+version: '3.8'
+
+services:
+  app:
+    container_name: ghgo
+    image: kongxu633/ghgo:latest
+    # network_mode: host
+    ports:
+      - '8888:8888/tcp'
