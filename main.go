@@ -61,7 +61,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 
 	// 加载配置
-	loadConfig("/etc/ghgo/config.json")
+	loadConfig("config.json")
 
 	// 加载白名单
 	loadWhitelist(config.Whitelist)
@@ -177,9 +177,14 @@ func mergeRuleSet(newRuleSet HostRules) {
 
 func handler(c *gin.Context) {
 	rawPath := strings.TrimPrefix(c.Request.URL.RequestURI(), "/")
-	rawPath = "https://" + strings.TrimPrefix(rawPath, "/")
 
 	// 检查 URL 是否匹配合并后的正则表达式
+	if strings.HasPrefix(rawPath, "https://") || strings.HasPrefix(rawPath, "http://") {
+		rawPath = rawPath // No need to modify
+	} else {
+		awPath = "https://" + rawPath // Prepend "https://" if missing
+	}
+
 	matches := checkURL(rawPath)
 	if matches == nil {
 		c.String(http.StatusForbidden, "Invalid input.")
