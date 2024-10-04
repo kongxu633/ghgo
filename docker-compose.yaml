@@ -5,5 +5,7 @@ services:
     container_name: ghgo
     image: kongxu633/ghgo:latest
     # network_mode: host
+    volumes:
+      - ./etc:/etc/ghgo
     ports:
       - '8888:8888/tcp'

@@ -61,7 +61,7 @@ func main() {
 	gin.SetMode(gin.ReleaseMode)
 
 	// 加载配置
-	loadConfig("config.json")
+	loadConfig("/etc/ghgo/config.json")
 
 	// 加载白名单
 	loadWhitelist(config.Whitelist)
