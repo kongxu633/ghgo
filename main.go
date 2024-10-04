@@ -1,9 +1,11 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
@@ -11,24 +13,65 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const (
-	sizeLimit = 1024 * 1024 * 1024 * 1
-	host      = "0.0.0.0"
-	port      = 8888
-)
+type ReplacementRule struct {
+	Pattern     string `json:"pattern"`
+	Replacement string `json:"replacement"`
+}
+
+type HostRules struct {
+	Hosts         []string          `json:"hosts"`
+	Replacements  []ReplacementRule  `json:"replacements"`
+	DeleteHeaders []string          `json:"deleteHeaders"`
+}
+
+type ServerConfig struct {
+	Host      string `json:"host"`
+	Port      int    `json:"port"`
+	SizeLimit int64  `json:"sizeLimit"`
+}
+
+type Config struct {
+	Whitelist []string       `json:"whitelist"`
+	Rules     []HostRules    `json:"rules"`
+	Server    ServerConfig   `json:"server"`
+}
 
 var (
-	exps = []*regexp.Regexp{
+	defaultExps = []*regexp.Regexp{
 		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:releases|archive)/.*$`),
 		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:blob|raw)/.*$`),
 		regexp.MustCompile(`^(?:https?://)?github\.com/([^/]+)/([^/]+)/(?:info|git-).*$`),
-		regexp.MustCompile(`^(?:https?://)?raw\.github(?:usercontent|)\.com/([^/]+)/([^/]+)/.+?/.+$`),
+		regexp.MustCompile(`^(?:https?://)?raw\.githubusercontent\.com/([^/]+)/([^/]+)/.+?/.+$`),
 		regexp.MustCompile(`^(?:https?://)?gist\.github\.com/([^/]+)/.+?/.+$`),
+	}
+
+	rules     = make([]HostRules, 0)
+	whitelist = []*regexp.Regexp{}
+	exps      = []*regexp.Regexp{}
+	config    = &Config{
+		Server: ServerConfig{
+			Host:      "0.0.0.0",
+			Port:      8888,
+			SizeLimit: 1024 * 1024 * 1024,
+		},
 	}
 )
 
 func main() {
 	gin.SetMode(gin.ReleaseMode)
+
+	// 加载配置
+	loadConfig("config.json")
+
+	// 加载白名单
+	loadWhitelist(config.Whitelist)
+
+	// 合并默认的 exps 和白名单
+	mergeExps()
+
+	// 加载并合并规则
+	loadAndMergeRules()
+
 	router := gin.Default()
 
 	router.GET("/", func(c *gin.Context) {
@@ -45,30 +88,137 @@ func main() {
 
 	router.NoRoute(handler)
 
-	err := router.Run(fmt.Sprintf("%s:%d", host, port))
+	err := router.Run(fmt.Sprintf("%s:%d", config.Server.Host, config.Server.Port))
 	if err != nil {
 		fmt.Printf("Error starting server: %v\n", err)
 	}
 }
 
+func loadConfig(file string) {
+	configFile, err := os.Open(file)
+	if os.IsNotExist(err) {
+		return // 文件不存在，使用默认配置
+	} else if err != nil {
+		fmt.Println("Error opening config file:", err)
+		return
+	}
+	defer configFile.Close()
+
+	if err := json.NewDecoder(configFile).Decode(config); err != nil {
+		fmt.Println("Error decoding config file:", err)
+	}
+}
+
+func loadWhitelist(whitelistStr []string) {
+	for _, pattern := range whitelistStr {
+		re := regexp.MustCompile(pattern)
+		whitelist = append(whitelist, re)
+	}
+}
+
+func mergeExps() {
+	uniqueExps := make(map[string]*regexp.Regexp)
+
+	// 添加默认的 exps
+	for _, exp := range defaultExps {
+		uniqueExps[exp.String()] = exp
+	}
+
+	// 添加白名单中的正则表达式，覆盖默认的
+	for _, re := range whitelist {
+		uniqueExps[re.String()] = re
+	}
+
+	// 转换为切片
+	for _, exp := range uniqueExps {
+		exps = append(exps, exp)
+	}
+}
+
+func loadAndMergeRules() {
+	// 默认规则
+	defaultRules := HostRules{
+		Hosts: []string{"github.com", "gist.github.com", "raw.githubusercontent.com"},
+		Replacements: []ReplacementRule{
+			{
+				Pattern:     "/blob/",
+				Replacement: "/raw/",
+			},
+		},
+		DeleteHeaders: []string{
+			"Content-Security-Policy",
+			"Referrer-Policy",
+			"Strict-Transport-Security",
+		},
+	}
+	rules = append(rules, defaultRules)
+
+	// 加载配置中的规则
+	for _, ruleSet := range config.Rules {
+		mergeRuleSet(ruleSet)
+	}
+}
+
+func mergeRuleSet(newRuleSet HostRules) {
+	for i, ruleSet := range rules {
+		for _, newHost := range newRuleSet.Hosts {
+			for _, existingHost := range ruleSet.Hosts {
+				if newHost == existingHost {
+					// 覆盖现有规则
+					rules[i] = newRuleSet
+					return
+				}
+			}
+		}
+	}
+	// 如果没有匹配，添加新规则
+	rules = append(rules, newRuleSet)
+}
+
 func handler(c *gin.Context) {
 	rawPath := strings.TrimPrefix(c.Request.URL.RequestURI(), "/")
-	re := regexp.MustCompile(`^(http:|https:)?/?/?(.*)`)
-	matches := re.FindStringSubmatch(rawPath)
+	rawPath = "https://" + strings.TrimPrefix(rawPath, "/")
 
-	rawPath = "https://" + matches[2]
-
-	matches = checkURL(rawPath)
+	// 检查 URL 是否匹配合并后的正则表达式
+	matches := checkURL(rawPath)
 	if matches == nil {
 		c.String(http.StatusForbidden, "Invalid input.")
 		return
 	}
 
-	if exps[1].MatchString(rawPath) {
-		rawPath = strings.Replace(rawPath, "/blob/", "/raw/", 1)
+	urlHost := extractHost(rawPath)
+
+	// 检查是否在白名单中
+	if !isInWhitelist(urlHost) {
+		c.String(http.StatusForbidden, "Host not allowed.")
+		return
+	}
+
+	// 获取对应的规则
+	for _, ruleSet := range rules {
+		for _, host := range ruleSet.Hosts {
+			if host == urlHost {
+				// 应用所有替换规则
+				for _, rule := range ruleSet.Replacements {
+					re := regexp.MustCompile(rule.Pattern)
+					rawPath = re.ReplaceAllString(rawPath, rule.Replacement)
+				}
+				// 删除指定头部
+				deleteHeaders(c, ruleSet.DeleteHeaders)
+			}
+		}
 	}
 
 	proxy(c, rawPath)
+}
+
+func checkURL(u string) []string {
+	for _, exp := range exps {
+		if matches := exp.FindStringSubmatch(u); matches != nil {
+			return matches[1:]
+		}
+	}
+	return nil
 }
 
 func proxy(c *gin.Context, u string) {
@@ -93,34 +243,55 @@ func proxy(c *gin.Context, u string) {
 	defer resp.Body.Close()
 
 	if contentLength, ok := resp.Header["Content-Length"]; ok {
-		if size, err := strconv.Atoi(contentLength[0]); err == nil && size > sizeLimit {
+		if size, err := strconv.Atoi(contentLength[0]); err == nil && size > config.Server.SizeLimit {
 			finalURL := resp.Request.URL.String()
 			c.Redirect(http.StatusFound, finalURL)
 			return
 		}
 	}
 
-	resp.Header.Del("Content-Security-Policy")
-	resp.Header.Del("Referrer-Policy")
-	resp.Header.Del("Strict-Transport-Security")
-
+	// 设置响应头
 	for key, values := range resp.Header {
 		for _, value := range values {
 			c.Header(key, value)
 		}
 	}
-
 	c.Status(resp.StatusCode)
-	if _, err := io.Copy(c.Writer, resp.Body); err != nil {
-		return
+
+	// 使用 io.Pipe 进行非阻塞写入
+	pipeReader, pipeWriter := io.Pipe()
+	go func() {
+		defer pipeWriter.Close()
+		if _, err := io.Copy(pipeWriter, resp.Body); err != nil {
+			fmt.Printf("Error writing to pipe: %v\n", err)
+		}
+	}()
+
+	if _, err := io.Copy(c.Writer, pipeReader); err != nil {
+		fmt.Printf("Error writing to response: %v\n", err)
 	}
 }
 
-func checkURL(u string) []string {
-	for _, exp := range exps {
-		if matches := exp.FindStringSubmatch(u); matches != nil {
-			return matches[1:]
+func deleteHeaders(c *gin.Context, headers []string) {
+	for _, header := range headers {
+		c.Header(header, "")
+	}
+}
+
+func extractHost(u string) string {
+	re := regexp.MustCompile(`^(?:https?://)?([^/]+)`)
+	matches := re.FindStringSubmatch(u)
+	if len(matches) > 1 {
+		return matches[1]
+	}
+	return ""
+}
+
+func isInWhitelist(host string) bool {
+	for _, re := range whitelist {
+		if re.MatchString(host) {
+			return true
 		}
 	}
-	return nil
+	return false
 }

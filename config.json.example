@@ -1,0 +1,28 @@
+{
+    "whitelist": [
+        "github\\.com",
+        "gist\\.github\\.com",
+        "raw\\.githubusercontent\\.com"
+    ],
+    "rules": [
+        {
+            "hosts": ["github.com", "gist.github.com", "raw.githubusercontent.com"],
+            "replacements": [
+                {
+                    "pattern": "/blob/",
+                    "replacement": "/raw/"
+                }
+            ],
+            "deleteHeaders": [
+			    "Content-Security-Policy",
+			    "Referrer-Policy",
+			    "Strict-Transport-Security"
+            ]
+        }
+    ],
+    "server": {
+        "host": "0.0.0.0",
+        "port": 8888,
+        "sizeLimit": 1073741824
+    }
+}
