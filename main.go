@@ -182,7 +182,7 @@ func handler(c *gin.Context) {
 	if strings.HasPrefix(rawPath, "https://") || strings.HasPrefix(rawPath, "http://") {
 		rawPath = rawPath // No need to modify
 	} else {
-		awPath = "https://" + rawPath // Prepend "https://" if missing
+		rawPath = "https://" + rawPath // Prepend "https://" if missing
 	}
 
 	matches := checkURL(rawPath)
