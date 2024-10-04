@@ -19,6 +19,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o ghgo
 # Production stage
 FROM alpine:3.20 AS final
 
+RUN mkdir -p /etc/ghgo
+
 WORKDIR /app
 COPY --from=builder /build/ghgo /app/
 COPY --from=builder /build/config.json.example /etc/ghgo/config.json  # Copy and rename config file

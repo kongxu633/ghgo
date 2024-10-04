@@ -29,9 +29,9 @@ jobs:
 
       # https://goreleaser.com/ci/actions/
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v6
+        uses: goreleaser/goreleaser-action@v5
         with:
-          version: "~> v2"
+          version: "~> v1"
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GH_TOKEN_REPO }}
