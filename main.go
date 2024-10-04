@@ -52,7 +52,7 @@ var (
 		Server: ServerConfig{
 			Host:      "0.0.0.0",
 			Port:      8888,
-			SizeLimit: 1024 * 1024 * 1024,
+			SizeLimit: 1024 * 1024 * 1024, // 1 GB
 		},
 	}
 )
@@ -242,8 +242,9 @@ func proxy(c *gin.Context, u string) {
 	}
 	defer resp.Body.Close()
 
+	// 转换 SizeLimit 为 int
 	if contentLength, ok := resp.Header["Content-Length"]; ok {
-		if size, err := strconv.Atoi(contentLength[0]); err == nil && size > config.Server.SizeLimit {
+		if size, err := strconv.Atoi(contentLength[0]); err == nil && int64(size) > config.Server.SizeLimit {
 			finalURL := resp.Request.URL.String()
 			c.Redirect(http.StatusFound, finalURL)
 			return
