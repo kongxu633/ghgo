@@ -14,10 +14,14 @@
                 }
             ],
             "deleteHeaders": [
-			    "Content-Security-Policy",
-			    "Referrer-Policy",
-			    "Strict-Transport-Security"
-            ]
+                "Content-Security-Policy",
+                "Referrer-Policy",
+                "Strict-Transport-Security"
+            ],
+            "addHeaders": {
+                "Authorization": "Bearer your_token",
+                "Custom-Header": "HeaderValue"
+            }
         }
     ],
     "server": {

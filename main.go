@@ -22,6 +22,7 @@ type HostRules struct {
 	Hosts         []string          `json:"hosts"`
 	Replacements  []ReplacementRule  `json:"replacements"`
 	DeleteHeaders []string          `json:"deleteHeaders"`
+	AddHeaders    map[string]string  `json:"addHeaders"` // 新增字段用于添加请求头
 }
 
 type ServerConfig struct {
@@ -124,7 +125,7 @@ func mergeExps() {
 		uniqueExps[exp.String()] = exp
 	}
 
-	// 添加白名单中的正则表达式，覆盖默认的
+	// 添加白名单中的正则表达式
 	for _, re := range whitelist {
 		uniqueExps[re.String()] = re
 	}
@@ -149,6 +150,9 @@ func loadAndMergeRules() {
 			"Content-Security-Policy",
 			"Referrer-Policy",
 			"Strict-Transport-Security",
+		},
+		AddHeaders: map[string]string{
+			"Authorization": "Bearer your_token", // 默认请求头
 		},
 	}
 	rules = append(rules, defaultRules)
@@ -180,7 +184,7 @@ func handler(c *gin.Context) {
 
 	// 检查 URL 是否匹配合并后的正则表达式
 	if strings.HasPrefix(rawPath, "https://") || strings.HasPrefix(rawPath, "http://") {
-		rawPath = rawPath // No need to modify
+		rawPath = rawPath
 	} else {
 		rawPath = "https://" + rawPath // Prepend "https://" if missing
 	}
@@ -200,21 +204,27 @@ func handler(c *gin.Context) {
 	}
 
 	// 获取对应的规则
-	for _, ruleSet := range rules {
-		for _, host := range ruleSet.Hosts {
+	var ruleSet HostRules
+	for _, r := range rules {
+		for _, host := range r.Hosts {
 			if host == urlHost {
-				// 应用所有替换规则
-				for _, rule := range ruleSet.Replacements {
-					re := regexp.MustCompile(rule.Pattern)
-					rawPath = re.ReplaceAllString(rawPath, rule.Replacement)
-				}
-				// 删除指定头部
-				deleteHeaders(c, ruleSet.DeleteHeaders)
+				ruleSet = r
+				break
 			}
 		}
 	}
 
-	proxy(c, rawPath)
+	// 应用替换规则和添加请求头
+	for _, rule := range ruleSet.Replacements {
+		re := regexp.MustCompile(rule.Pattern)
+		rawPath = re.ReplaceAllString(rawPath, rule.Replacement)
+	}
+
+	for key, value := range ruleSet.AddHeaders {
+		c.Request.Header.Set(key, value) // 设置或覆盖请求头
+	}
+
+	proxy(c, rawPath, ruleSet)
 }
 
 func checkURL(u string) []string {
@@ -226,7 +236,7 @@ func checkURL(u string) []string {
 	return nil
 }
 
-func proxy(c *gin.Context, u string) {
+func proxy(c *gin.Context, u string, ruleSet HostRules) {
 	req, err := http.NewRequest(c.Request.Method, u, c.Request.Body)
 	if err != nil {
 		c.String(http.StatusInternalServerError, fmt.Sprintf("server error %v", err))
@@ -262,7 +272,9 @@ func proxy(c *gin.Context, u string) {
 			c.Header(key, value)
 		}
 	}
-	c.Status(resp.StatusCode)
+
+	// 删除指定头部
+	deleteHeaders(c, ruleSet.DeleteHeaders)
 
 	// 使用 io.Pipe 进行非阻塞写入
 	pipeReader, pipeWriter := io.Pipe()
@@ -280,7 +292,7 @@ func proxy(c *gin.Context, u string) {
 
 func deleteHeaders(c *gin.Context, headers []string) {
 	for _, header := range headers {
-		c.Header(header, "")
+		c.Header(header, "") // 删除响应头
 	}
 }
 
